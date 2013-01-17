@@ -925,6 +925,12 @@ namespace cv
         // Predicts the label and confidence for a given sample.
         CV_WRAP virtual void predict(InputArray src, CV_OUT int &label, CV_OUT double &confidence) const = 0;
 
+        // Added by Bob Woodley 9/2012. Returns subspace coords from a FaceRecognizer.
+        virtual Mat predictionCoordinates(InputArray src) const = 0;
+
+        // Added by Bob Woodley 1/2013. 
+		virtual Mat reconstructFromCoordinates(InputArray inSrc) const = 0;
+
         // Serializes this object to a given filename.
         CV_WRAP virtual void save(const string& filename) const;
 

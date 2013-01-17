@@ -141,7 +141,13 @@ public:
     // Predicts the label and confidence for a given sample.
     void predict(InputArray _src, int &label, double &dist) const;
 
-    // See FaceRecognizer::load.
+    // Added by Bob Woodley 9/2012. Returns subspace coords from a FaceRecognizer.
+    Mat predictionCoordinates(InputArray src) const;
+
+    // Added by Bob Woodley 1/2013. 
+	Mat reconstructFromCoordinates(InputArray inSrc) const;
+
+	// See FaceRecognizer::load.
     void load(const FileStorage& fs);
 
     // See FaceRecognizer::save.
@@ -195,6 +201,18 @@ public:
 
     // Predicts the label and confidence for a given sample.
     void predict(InputArray _src, int &label, double &dist) const;
+
+    // Added by Bob Woodley 9/2012. Returns subspace coords from a FaceRecognizer.
+	Mat predictionCoordinates(InputArray src) const { 
+		// placeholder:
+		return src.getMat(); 
+	}
+    // Added by Bob Woodley 1/2013. 
+	virtual Mat reconstructFromCoordinates(InputArray inSrc) const {
+		// placeholder:
+		return inSrc.getMat(); 
+	}
+
 
     // See FaceRecognizer::load.
     void load(const FileStorage& fs);
@@ -280,6 +298,17 @@ public:
 
     // Predicts the label and confidence for a given sample.
     void predict(InputArray _src, int &label, double &dist) const;
+
+    // Added by Bob Woodley 9/2012. Returns subspace coords from a FaceRecognizer.
+	Mat predictionCoordinates(InputArray src) const { 
+		// placeholder:
+		return src.getMat(); 
+	}
+    // Added by Bob Woodley 1/2013. 
+	virtual Mat reconstructFromCoordinates(InputArray inSrc) const {
+		// placeholder:
+		return inSrc.getMat(); 
+	}
 
     // See FaceRecognizer::load.
     void load(const FileStorage& fs);
@@ -405,6 +434,32 @@ void Eigenfaces::predict(InputArray _src, int &minClass, double &minDist) const 
             minClass = _labels.at<int>((int)sampleIdx);
         }
     }
+}
+Mat Eigenfaces::reconstructFromCoordinates(InputArray inSrc) const {
+	Mat projection = inSrc.getMat();
+    // slice the eigenvectors from the model
+    Mat evs = Mat(_eigenvectors, Range::all(), Range(0, _num_components));	// todo: _eigenvectors correct here?
+	Mat reconstruction = subspaceReconstruct(evs, _mean, projection);
+	// Normalize the result:
+	//reconstruction = norm_0_255(reconstruction.reshape(1, 112));		// todo
+	return reconstruction.reshape(1,112);	
+}
+Mat Eigenfaces::predictionCoordinates(InputArray inSrc) const {
+    // get data
+    Mat src = inSrc.getMat();
+    // make sure the user is passing correct data
+    if(_projections.empty()) {
+        // throw error if no data (or simply return -1?)
+        string error_message = "This Eigenfaces model is not computed yet. Did you call Eigenfaces::train?";
+        CV_Error(CV_StsError, error_message);
+    } else if(_eigenvectors.rows != static_cast<int>(src.total())) {
+        // check data alignment just for clearer exception messages
+        string error_message = format("Wrong input image size. Reason: Training and Test images must be of equal size! Expected an image with %d elements, but got %d.", _eigenvectors.rows, src.total());
+        CV_Error(CV_StsBadArg, error_message);
+    }
+    // project into PCA subspace
+    Mat q = subspaceProject(_eigenvectors, _mean, src.reshape(1,1));
+	return q;
 }
 
 int Eigenfaces::predict(InputArray _src) const {
