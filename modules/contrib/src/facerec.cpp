@@ -105,6 +105,8 @@ class Eigenfaces : public FaceRecognizer
 {
 private:
     int _num_components;
+	int _faceRows;
+	int _faceCols;
     double _threshold;
     vector<Mat> _projections;
     Mat _labels;
@@ -395,6 +397,9 @@ void Eigenfaces::train(InputArrayOfArrays _src, InputArray _local_labels) {
     if((_num_components <= 0) || (_num_components > n))
         _num_components = n;
 
+	_faceRows = _src.getMat(0).rows;
+	_faceCols = _src.getMat(0).cols;
+
     // perform the PCA
     PCA pca(data, Mat(), CV_PCA_DATA_AS_ROW, _num_components);
     // copy the PCA results
@@ -442,7 +447,7 @@ Mat Eigenfaces::reconstructFromCoordinates(InputArray inSrc) const {
 	Mat reconstruction = subspaceReconstruct(evs, _mean, projection);
 	// Normalize the result:
 	//reconstruction = norm_0_255(reconstruction.reshape(1, 112));		// todo
-	return reconstruction.reshape(1,112);	
+	return reconstruction.reshape(1,_faceRows);
 }
 Mat Eigenfaces::predictionCoordinates(InputArray inSrc) const {
     // get data
@@ -475,6 +480,8 @@ void Eigenfaces::load(const FileStorage& fs) {
     fs["mean"] >> _mean;
     fs["eigenvalues"] >> _eigenvalues;
     fs["eigenvectors"] >> _eigenvectors;
+	fs["faceRows"] >> _faceRows;
+	fs["faceCols"] >> _faceCols;
     // read sequences
     readFileNodeList(fs["projections"], _projections);
     fs["labels"] >> _labels;
@@ -486,6 +493,8 @@ void Eigenfaces::save(FileStorage& fs) const {
     fs << "mean" << _mean;
     fs << "eigenvalues" << _eigenvalues;
     fs << "eigenvectors" << _eigenvectors;
+	fs << "faceRows" << _faceRows;
+	fs << "faceCols" << _faceCols;
     // write sequences
     writeFileNodeList(fs, "projections", _projections);
     fs << "labels" << _labels;
@@ -928,7 +937,10 @@ CV_INIT_ALGORITHM(Eigenfaces, "FaceRecognizer.Eigenfaces",
                   obj.info()->addParam(obj, "labels", obj._labels, true);
                   obj.info()->addParam(obj, "eigenvectors", obj._eigenvectors, true);
                   obj.info()->addParam(obj, "eigenvalues", obj._eigenvalues, true);
-                  obj.info()->addParam(obj, "mean", obj._mean, true));
+                  obj.info()->addParam(obj, "mean", obj._mean, true);
+                  obj.info()->addParam(obj, "faceRows", obj._faceRows, true);
+                  obj.info()->addParam(obj, "faceCols", obj._faceCols, true);
+					  );
 
 CV_INIT_ALGORITHM(Fisherfaces, "FaceRecognizer.Fisherfaces",
                   obj.info()->addParam(obj, "ncomponents", obj._num_components);
