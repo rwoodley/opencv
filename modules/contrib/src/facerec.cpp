@@ -166,6 +166,8 @@ class Fisherfaces: public FaceRecognizer
 {
 private:
     int _num_components;
+	int _faceRows;
+	int _faceCols;
     double _threshold;
     Mat _eigenvectors;
     Mat _eigenvalues;
@@ -204,17 +206,11 @@ public:
     // Predicts the label and confidence for a given sample.
     void predict(InputArray _src, int &label, double &dist) const;
 
-    // Added by Bob Woodley 9/2012. Returns subspace coords from a FaceRecognizer.
-	Mat predictionCoordinates(InputArray src) const { 
-		// placeholder:
-		return src.getMat(); 
-	}
-    // Added by Bob Woodley 1/2013. 
-	virtual Mat reconstructFromCoordinates(InputArray inSrc) const {
-		// placeholder:
-		return inSrc.getMat(); 
-	}
+    // Added by Bob Woodley 2/2013. Returns subspace coords from a FaceRecognizer.
+    Mat predictionCoordinates(InputArray src) const;
 
+	// Added by Bob Woodley 1/2013. 
+	Mat reconstructFromCoordinates(InputArray inSrc) const;
 
     // See FaceRecognizer::load.
     void load(const FileStorage& fs);
@@ -414,6 +410,12 @@ void Eigenfaces::train(InputArrayOfArrays _src, InputArray _local_labels) {
         _projections.push_back(p);
     }
 }
+int Eigenfaces::predict(InputArray _src) const {
+    int label;
+    double dummy;
+    predict(_src, label, dummy);
+    return label;
+}
 
 void Eigenfaces::predict(InputArray _src, int &minClass, double &minDist) const {
     // get data
@@ -440,15 +442,6 @@ void Eigenfaces::predict(InputArray _src, int &minClass, double &minDist) const 
         }
     }
 }
-Mat Eigenfaces::reconstructFromCoordinates(InputArray inSrc) const {
-	Mat projection = inSrc.getMat();
-    // slice the eigenvectors from the model
-    Mat evs = Mat(_eigenvectors, Range::all(), Range(0, _num_components));	// todo: _eigenvectors correct here?
-	Mat reconstruction = subspaceReconstruct(evs, _mean, projection);
-	// Normalize the result:
-	//reconstruction = norm_0_255(reconstruction.reshape(1, 112));		// todo
-	return reconstruction.reshape(1,_faceRows);
-}
 Mat Eigenfaces::predictionCoordinates(InputArray inSrc) const {
     // get data
     Mat src = inSrc.getMat();
@@ -466,12 +459,12 @@ Mat Eigenfaces::predictionCoordinates(InputArray inSrc) const {
     Mat q = subspaceProject(_eigenvectors, _mean, src.reshape(1,1));
 	return q;
 }
-
-int Eigenfaces::predict(InputArray _src) const {
-    int label;
-    double dummy;
-    predict(_src, label, dummy);
-    return label;
+Mat Eigenfaces::reconstructFromCoordinates(InputArray inSrc) const {
+	Mat projection = inSrc.getMat();
+    // slice the eigenvectors from the model
+    Mat evs = Mat(_eigenvectors, Range::all(), Range(0, _num_components));
+	Mat reconstruction = subspaceReconstruct(evs, _mean, projection);
+	return reconstruction.reshape(1,_faceRows);
 }
 
 void Eigenfaces::load(const FileStorage& fs) {
@@ -556,6 +549,10 @@ void Fisherfaces::train(InputArrayOfArrays src, InputArray _lbls) {
     _labels = labels.clone();
     // store the eigenvalues of the discriminants
     lda.eigenvalues().convertTo(_eigenvalues, CV_64FC1);
+
+	_faceRows = src.getMat(0).rows;
+	_faceCols = src.getMat(0).cols;
+
     // Now calculate the projection matrix as pca.eigenvectors * lda.eigenvectors.
     // Note: OpenCV stores the eigenvectors by row, so we need to transpose it!
     gemm(pca.eigenvectors, lda.eigenvectors(), 1.0, Mat(), 0.0, _eigenvectors, GEMM_1_T);
@@ -564,6 +561,12 @@ void Fisherfaces::train(InputArrayOfArrays src, InputArray _lbls) {
         Mat p = subspaceProject(_eigenvectors, _mean, data.row(sampleIdx));
         _projections.push_back(p);
     }
+}
+int Fisherfaces::predict(InputArray _src) const {
+    int label;
+    double dummy;
+    predict(_src, label, dummy);
+    return label;
 }
 
 void Fisherfaces::predict(InputArray _src, int &minClass, double &minDist) const {
@@ -590,12 +593,28 @@ void Fisherfaces::predict(InputArray _src, int &minClass, double &minDist) const
         }
     }
 }
+Mat Fisherfaces::predictionCoordinates(InputArray _src) const {
+    Mat src = _src.getMat();
+    // check data alignment just for clearer exception messages
+    if(_projections.empty()) {
+        // throw error if no data (or simply return -1?)
+        string error_message = "This Fisherfaces model is not computed yet. Did you call Fisherfaces::train?";
+        CV_Error(CV_StsBadArg, error_message);
+    } else if(src.total() != (size_t) _eigenvectors.rows) {
+        string error_message = format("Wrong input image size. Reason: Training and Test images must be of equal size! Expected an image with %d elements, but got %d.", _eigenvectors.rows, src.total());
+        CV_Error(CV_StsBadArg, error_message);
+    }
+    // project into LDA subspace
+    Mat q = subspaceProject(_eigenvectors, _mean, src.reshape(1,1));
+	return q;
+}
 
-int Fisherfaces::predict(InputArray _src) const {
-    int label;
-    double dummy;
-    predict(_src, label, dummy);
-    return label;
+Mat Fisherfaces::reconstructFromCoordinates(InputArray inSrc) const {
+	Mat projection = inSrc.getMat();
+    // slice the eigenvectors from the model
+    Mat evs = Mat(_eigenvectors, Range::all(), Range(0, _num_components));
+	Mat reconstruction = subspaceReconstruct(evs, _mean, projection);
+	return reconstruction.reshape(1,_faceRows);
 }
 
 // See FaceRecognizer::load.
@@ -605,6 +624,8 @@ void Fisherfaces::load(const FileStorage& fs) {
     fs["mean"] >> _mean;
     fs["eigenvalues"] >> _eigenvalues;
     fs["eigenvectors"] >> _eigenvectors;
+	fs["faceRows"] >> _faceRows;
+	fs["faceCols"] >> _faceCols;
     // read sequences
     readFileNodeList(fs["projections"], _projections);
     fs["labels"] >> _labels;
@@ -617,6 +638,8 @@ void Fisherfaces::save(FileStorage& fs) const {
     fs << "mean" << _mean;
     fs << "eigenvalues" << _eigenvalues;
     fs << "eigenvectors" << _eigenvectors;
+	fs << "faceRows" << _faceRows;
+	fs << "faceCols" << _faceCols;
     // write sequences
     writeFileNodeList(fs, "projections", _projections);
     fs << "labels" << _labels;
@@ -949,7 +972,10 @@ CV_INIT_ALGORITHM(Fisherfaces, "FaceRecognizer.Fisherfaces",
                   obj.info()->addParam(obj, "labels", obj._labels, true);
                   obj.info()->addParam(obj, "eigenvectors", obj._eigenvectors, true);
                   obj.info()->addParam(obj, "eigenvalues", obj._eigenvalues, true);
-                  obj.info()->addParam(obj, "mean", obj._mean, true));
+                  obj.info()->addParam(obj, "mean", obj._mean, true);
+                  obj.info()->addParam(obj, "faceRows", obj._faceRows, true);
+                  obj.info()->addParam(obj, "faceCols", obj._faceCols, true);
+					  );
 
 CV_INIT_ALGORITHM(LBPH, "FaceRecognizer.LBPH",
                   obj.info()->addParam(obj, "radius", obj._radius);
